@@ -1,10 +1,10 @@
 import os
 from dotenv import load_dotenv
 
-def load_env_variables():
 
+def load_env_variables():
     # charger les variables d'environement
-    try :
+    try:
         load_dotenv()
     except Exception as e:
         print(f"Erreur lors du chargement des variables d'environement : {e}")
@@ -28,8 +28,7 @@ def load_env_variables():
             "DB_KEY": db_key,
             "LOCAL": local,
         }
-    
+
     except ValueError as ve:
         print(f"erreur :  {ve}")
         return None
-    

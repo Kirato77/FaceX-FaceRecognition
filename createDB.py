@@ -9,9 +9,9 @@ from utils import UpdateAllFaceData, studentsImgToFaceData
 
 # Chargement des variables d'environnement
 load_dotenv()
-DB_URL = os.getenv('DB_URL')
-DB_KEY = os.getenv('DB_KEY')
-LOCAL = os.getenv('LOCAL')
+DB_URL = os.getenv("DB_URL")
+DB_KEY = os.getenv("DB_KEY")
+LOCAL = os.getenv("LOCAL")
 
 supabase: Client = create_client(DB_URL, DB_KEY)
 
