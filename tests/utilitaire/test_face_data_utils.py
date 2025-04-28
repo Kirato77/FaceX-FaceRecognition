@@ -1,7 +1,6 @@
 from unittest import TestCase
 import json
 import copy
-from utilitaire.face_recognition_utils import recognize_faces, studentsImgToFaceData
 from database.supabase_client import create_supabase_client
 from config.env_loader import load_env_variables
 from utilitaire.face_data_utils import checkFaceDataValidity

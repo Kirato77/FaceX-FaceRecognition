@@ -1,117 +1,128 @@
 import cv2
+import time
 from datetime import datetime, timedelta
 from config.env_loader import load_env_variables
 from database.supabase_client import create_supabase_client
 from database.attendance import (
     getActiveClassStudentsFaceData,
     getAttendanceForBlock,
-    postStudentAttendanceDB,
 )
-from utilitaire.face_data_utils import checkFaceDataValidity, normalize
 from utilitaire.face_recognition_utils import recognize_faces
 from database.face_data import update_face_data
 
-# from utilitaire.lcd import lcd_init, lcd_set_cursor, lcd_write
-# import RPi.GPIO as GPIO
-import time
+
+def get_student_name(db, email):
+    """Get student's full name from email."""
+    resp = db.rpc("get_user_by_email", {"user_email": email}).execute()
+
+    if resp.data and "first_name" in resp.data and "last_name" in resp.data:
+        return f"{resp.data['first_name']} {resp.data['last_name']}"
+    return "Unknown"
 
 
-def get_student_name(supabase, email):
-    response = supabase.rpc("get_user_by_email", {"user_email": email}).execute()
+def verify_face_data(email, face_db, db):
+    """Verify and update student's face data if needed."""
+    try:
+        name = f"{face_db[email]['first_name']} {face_db[email]['last_name']}"
+        face_data = face_db[email].get("face_data")
 
-    if response.data and "first_name" in response.data and "last_name" in response.data:
-        return f"{response.data['first_name']} {response.data['last_name']}"
-    else:
-        return "Inconnu"
+        if not face_data or len(face_data) == 0:
+            print(f"No face data for {name}. Updating...")
+            new_data = update_face_data(db, email)
+
+            if new_data:
+                face_db[email]["face_data"] = new_data
+                print(f"Face data updated for {name}")
+            else:
+                print(f"Failed to update face data for {name}")
+        else:
+            print(f"Face data exists for {name}")
+
+    except KeyError as e:
+        print(f"Missing key for {email}: {e}")
+    except Exception as e:
+        print(f"Error for {email}: {e}")
+
+
+def init_camera():
+    """Initialize camera connection."""
+    try:
+        cam = cv2.VideoCapture(0)
+        if not cam.isOpened():
+            raise Exception("Cannot access camera")
+        print("Camera started")
+        return cam
+    except Exception as e:
+        print(f"Camera error: {e}")
+        return None
 
 
 def main():
-    env_vars = load_env_variables()
-    supabase = create_supabase_client(env_vars["DB_URL"], env_vars["DB_KEY"])
+    # Init environment and DB
+    env = load_env_variables()
+    db = create_supabase_client(env["DB_URL"], env["DB_KEY"])
 
-    block_id, face_db = getActiveClassStudentsFaceData(supabase, env_vars["LOCAL"])
-    print(
-        f"Vous êtes dans le local : {env_vars['LOCAL']} avec un block_id : {block_id}"
-    )
+    # Get class info
+    block_id, face_db = getActiveClassStudentsFaceData(db, env["LOCAL"])
+    print(f"Room: {env['LOCAL']} | Block ID: {block_id}")
 
-    if face_db == None:
-        print("Il y a pas cours dans ce local actuellement")
+    # Check active class
+    if face_db is None:
+        print("No active class")
         time.sleep(10)
         main()
-
-    print("Vérification initiale des face data...")
-    for email in face_db:
-        # print(f"Vérification des données pour {email}: {face_db[email]}")
-        try:
-            student_name = (
-                f"{face_db[email]['first_name']} {face_db[email]['last_name']}"
-            )
-            face_data = face_db[email].get("face_data")
-
-            if not face_data or len(face_data) == 0:
-                print(
-                    f"Aucune donnée faciale trouvée pour {student_name}. Tentative de mise à jour..."
-                )
-                updated_face_data = update_face_data(supabase, email)
-                if updated_face_data:
-                    face_db[email]["face_data"] = updated_face_data
-                    print(f"Données faciales mises à jour pour {student_name}.")
-                else:
-                    print(
-                        f"Échec de la mise à jour des données faciales pour {student_name}."
-                    )
-            else:
-                print(f"Données faciales déjà présentes pour {student_name}.")
-        except KeyError as e:
-            print(f"Clé manquante pour {email}: {e}")
-        except Exception as e:
-            print(f"Erreur inattendue pour {email}: {e}")
-    print("Vérification terminée.")
-
-    existing_attendance = getAttendanceForBlock(supabase, block_id)
-
-    try:
-        cam = cv2.VideoCapture(0)
-
-        if not cam.isOpened():
-            raise Exception("Impossible d'accéder à la camera")
-        print("Webcam démarrée")
-    except Exception as e:
-        print(f"Erreur avec la camera : {e}")
         return
 
-    last_block_check_time = datetime.now()
-    block_change_check_interval = timedelta(minutes=5)
+    # Verify face data
+    print("Verifying face data...")
+    for email in face_db:
+        verify_face_data(email, face_db, db)
+    print("Verification complete")
 
+    # Init attendance
+    attendance = getAttendanceForBlock(db, block_id)
+
+    # Start camera
+    cam = init_camera()
+    if not cam:
+        return
+
+    # Init timing
+    last_check = datetime.now()
+    CHECK_INTERVAL = timedelta(minutes=5)
+
+    # Main loop
     while True:
         try:
-            if datetime.now() - last_block_check_time > block_change_check_interval:
-                block_id = getActiveClassStudentsFaceData(supabase, env_vars["LOCAL"])[
-                    0
-                ]
-                existing_attendance = getAttendanceForBlock(supabase, block_id)
-                last_block_check_time = datetime.now()
+            # Check block changes
+            now = datetime.now()
+            if now - last_check > CHECK_INTERVAL:
+                block_id, _ = getActiveClassStudentsFaceData(db, env["LOCAL"])
+                attendance = getAttendanceForBlock(db, block_id)
+                last_check = now
 
+            # Get frame
             try:
-                success, img = cam.read()
-                if not success:
-                    print("Erreur de lecture de la webcam.")
-                    raise SystemError("Erreur de lecture de la webcam.")
+                ok, frame = cam.read()
+                if not ok:
+                    print("Camera read failed")
+                    raise SystemError("Camera error")
             except SystemError as e:
-                print(f"Erreur avec la camera : {e}")
+                print(f"Camera error: {e}")
                 break
 
-            recognize_faces(img, face_db, existing_attendance, supabase, block_id)
+            # Process faces
+            recognize_faces(frame, face_db, attendance, db, block_id)
 
         except Exception as e:
-            print(
-                f"Erreur lors du traitement de l'image ou de la reconnaissance faciale : {e}"
-            )
+            print(f"Recognition error: {e}")
             break
 
+        # Check quit
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
+    # Cleanup
     cam.release()
 
 

@@ -1,98 +1,74 @@
-import os
-import json
 import face_recognition
-from supabase import create_client, Client
-from dotenv import load_dotenv
+from supabase import Client
 from PIL import Image
 import io
 import numpy as np
 
 
-def imgToFaceData(img):
+def img_to_face_data(img):
+    """Extract face encoding data from an image."""
     try:
-        print(f"Traitement de l'image.")
-        # Vérifier que l'image est bien en format RGB (important)
+        print("Processing image...")
+
+        # Convert to RGB if needed
         if img.mode != "RGB":
             img = img.convert("RGB")
 
-        # Traiter l'image en numpy
+        # Convert to numpy array and get face encoding
         img_array = np.array(img)
-
-        # Retrouver les visages
         face_encodings = face_recognition.face_encodings(img_array)
 
-        # Vérifier si un encodage a été extrait
-        if len(face_encodings) > 0:
-            embedding = face_encodings[0]
-            return embedding.tolist()
-        else:
-            print(f"Aucun encodage extrait pour l'image.")
-            return None
+        if face_encodings:
+            return face_encodings[0].tolist()
+
+        print("No face encoding found in image.")
+        return None
 
     except Exception as e:
-        print(f"Erreur lors de l'extraction des encodages : {e}")
+        print(f"Error extracting face encoding: {e}")
         return None
 
 
-def studentsImgToFaceData(supabase: Client, studentsEmail: str):
-    """
-    Recoit email d'un étudants et renvoir les face_data de son image stocké dans supabase
-    """
+def student_img_to_face_data(db: Client, email: str):
+    """Get face encoding data from student's stored image."""
+    # Get student ID
+    resp = db.rpc("get_user_by_email", {"user_email": email}).execute()
+    student_id = resp.data["matricule"]
 
-    # récuperer matricutle étudiant
-    response = supabase.rpc(
-        "get_user_by_email",
-        {
-            "user_email": studentsEmail,
-        },
-    ).execute()
-    matricule = response.data["matricule"]
+    # Get image from storage
+    img_data = db.storage.from_("id-pictures").download(f"students/{student_id}.jpg")
+    img = Image.open(io.BytesIO(img_data))
 
-    # Télécharger l'image binaire depuis le stockage Supabase
-    binary_data = supabase.storage.from_("id-pictures").download(
-        "students/" + matricule + ".jpg"
-    )
-
-    # Créer une image à partir des données binaires
-    image = Image.open(io.BytesIO(binary_data))
-    # image.show()
-
-    # Extraire les données du visage
-    encodings = imgToFaceData(image)
-    if encodings:
-        return encodings
-    else:
-        print("Aucun encodage trouvé pour cet étudiant.")
+    # Extract face data
+    face_data = img_to_face_data(img)
+    if face_data:
+        return face_data
+    print("No face encoding found for student.")
+    return None
 
 
-def UpdateAllFaceData(supabase: Client):
-    """
-    update dans la DB toutes les face_data des users étudiants à partir de leur image qui se trouve dans le bucket
-    """
-    reponse = supabase.rpc("get_all_users").execute()
-    # print(reponse.data)
+def update_all_face_data(db: Client):
+    """Update face data for all students in database."""
+    users = db.rpc("get_all_users").execute()
 
-    for i in reponse.data:
-        if i["role"] == "student":
-            print("Au tour de : " + i["email"])
-            faceData = [studentsImgToFaceData(supabase, i["email"])]
-            response = supabase.rpc(
+    for user in users.data:
+        if user["role"] == "student":
+            print(f"Processing: {user['email']}")
+            face_data = [student_img_to_face_data(db, user["email"])]
+            db.rpc(
                 "update_face_data",
-                {"user_email": i["email"], "new_face_data": faceData},
+                {"user_email": user["email"], "new_face_data": face_data},
             ).execute()
 
 
-def UpdateOneFaceData(supabase: Client, email):
-    """
-    update dans la DB une seul face_data à partir de l'email de étudiant
-    """
-    print(f"update de la photo de : {email} sur base de celle dans la DB")
+def update_one_face_data(db: Client, email: str):
+    """Update face data for single student."""
+    print(f"Updating face data for: {email}")
 
-    faceData = [studentsImgToFaceData(supabase, email)]
-    response = supabase.rpc(
-        "update_face_data", {"user_email": email, "new_face_data": faceData}
+    face_data = [student_img_to_face_data(db, email)]
+    db.rpc(
+        "update_face_data", {"user_email": email, "new_face_data": face_data}
     ).execute()
 
-    print(f"update fini pour la face_data de : {email}")
-
-    return faceData
+    print(f"Face data update complete for: {email}")
+    return face_data

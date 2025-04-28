@@ -1,11 +1,7 @@
 import os
-import cv2
-import numpy as np
-import face_recognition
 from supabase import create_client, Client
 from dotenv import load_dotenv
-from datetime import datetime, timezone, timedelta
-from utils import UpdateAllFaceData, studentsImgToFaceData
+from utils import UpdateAllFaceData
 
 # Chargement des variables d'environnement
 load_dotenv()

@@ -8,7 +8,7 @@ def getActiveClassStudentsFaceData(supabase, local):
         ).execute()
         return response.data["block_id"], response.data["students"]
 
-    except ValueError as e:
+    except ValueError:
         print(
             "Erreur supabase : soucis dans la requete vers supabase 'get_active_class_students_face_data'"
         )
@@ -23,7 +23,7 @@ def getAttendanceForBlock(supabase, class_block_id):
         ).execute()
         return {attendance["student_email"] for attendance in response.data}
 
-    except ValueError as e:
+    except ValueError:
         print(
             "Erreur supabase : soucis dans la requete vers supabase 'get_attendance_for_class_block_python'"
         )
@@ -50,7 +50,7 @@ def postStudentAttendanceDB(
             print(f"Présence enregistrée pour {student_email} (Block ID : {block_id}).")
         else:
             print(f"{student_email} était déjà enregistré pour ce bloc.")
-    except Exception as e:
+    except Exception:
         print(
             f"Erreur supabase : soucis dans la requete vers supabase 'post_new_attendance' pour cet étudiant {student_email}"
         )
