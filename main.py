@@ -15,34 +15,33 @@ from Silent_Face_Anti_Spoofing.test import test
 def get_student_name(db, email):
     """Get student's full name from email."""
     resp = db.rpc("get_user_by_email", {"user_email": email}).execute()
-
-    if resp.data and "first_name" in resp.data and "last_name" in resp.data:
-        return f"{resp.data['first_name']} {resp.data['last_name']}"
-    return "Unknown"
+    data = resp.data
+    return (
+        f"{data['first_name']} {data['last_name']}"
+        if data and "first_name" in data
+        else "Unknown"
+    )
 
 
 def verify_face_data(email, face_db, db):
     """Verify and update student's face data if needed."""
     try:
-        name = f"{face_db[email]['first_name']} {face_db[email]['last_name']}"
-        face_data = face_db[email].get("face_data")
+        student_data = face_db[email]
+        name = f"{student_data['first_name']} {student_data['last_name']}"
+        face_data = student_data.get("face_data")
 
-        if not face_data or len(face_data) == 0:
+        if not face_data:
             print(f"No face data for {name}. Updating...")
-            new_data = update_face_data(db, email)
-
-            if new_data:
-                face_db[email]["face_data"] = new_data
+            if new_data := update_face_data(db, email):
+                student_data["face_data"] = new_data
                 print(f"Face data updated for {name}")
             else:
                 print(f"Failed to update face data for {name}")
         else:
             print(f"Face data exists for {name}")
 
-    except KeyError as e:
-        print(f"Missing key for {email}: {e}")
     except Exception as e:
-        print(f"Error for {email}: {e}")
+        print(f"Error processing {email}: {e}")
 
 
 def init_camera():
@@ -58,96 +57,94 @@ def init_camera():
         return None
 
 
+def process_frame(frame, face_db, attendance, db, block_id):
+    """Process a single frame for face recognition."""
+    # Check if frame is real using anti-spoofing
+    label = test(
+        image=frame,
+        model_dir="Silent_Face_Anti_Spoofing/resources/anti_spoof_models",
+        device_id=0,
+    )
+
+    if label == 1:
+        print("Real frame")
+        recognize_faces(frame, face_db, attendance, db, block_id)
+    else:
+        print("Fake frame")
+
+
 def main():
     # Init environment and DB
     env = load_env_variables()
     db = create_supabase_client(env["DB_URL"], env["DB_KEY"])
+    local = env["LOCAL"]
 
-    # Get class info
-    block_id, face_db = getActiveClassStudentsFaceData(db, env["LOCAL"])
-    print(f"Room: {env['LOCAL']} | Block ID: {block_id}")
-
-    # Check active class
-    if face_db is None:
-        print("No active class")
-        time.sleep(10)
-        main()
-        return
-
-    # Verify face data
-    print("Verifying face data...")
-    for email in face_db:
-        verify_face_data(email, face_db, db)
-    print("Verification complete")
-
-    # Init attendance
-    attendance = getAttendanceForBlock(db, block_id)
-
-    # Start camera
-    cam = init_camera()
-    if not cam:
-        return
-
-    # Init timing
-    last_check = datetime.now()
+    # Define constants
     CHECK_INTERVAL = timedelta(minutes=5)
-    FRAME_INTERVAL = 0.5  # 0.5 seconds between frames (2 frames per second)
-    last_frame_time = time.time()
+    FRAME_INTERVAL = 0.5
 
-    # Main loop
     while True:
-        try:
-            current_time = time.time()
-            
-            # Only process frame every FRAME_INTERVAL seconds
-            if current_time - last_frame_time < FRAME_INTERVAL:
-                if cv2.waitKey(1) & 0xFF == ord("q"):
-                    break
-                continue
-                
-            last_frame_time = current_time
+        # Get class info
+        block_id, face_db = getActiveClassStudentsFaceData(db, local)
+        print(f"Room: {local} | Block ID: {block_id}")
 
-            # Check block changes
-            now = datetime.now()
-            if now - last_check > CHECK_INTERVAL:
-                block_id, _ = getActiveClassStudentsFaceData(db, env["LOCAL"])
-                attendance = getAttendanceForBlock(db, block_id)
-                last_check = now
+        if face_db is None:
+            print("No active class")
+            time.sleep(10)
+            continue
 
-            # Get frame
+        # Verify face data for all students
+        print("Verifying face data...")
+        for email in face_db:
+            verify_face_data(email, face_db, db)
+        print("Verification complete")
+
+        # Initialize attendance tracking and camera
+        attendance = getAttendanceForBlock(db, block_id)
+        if not (cam := init_camera()):
+            return
+
+        # Initialize timing variables
+        last_check = datetime.now()
+        last_frame_time = time.time()
+
+        # Main frame processing loop
+        while True:
             try:
+                # Control frame processing rate
+                current_time = time.time()
+                if current_time - last_frame_time < FRAME_INTERVAL:
+                    if cv2.waitKey(1) & 0xFF == ord("q"):
+                        cam.release()
+                        return
+                    continue
+
+                last_frame_time = current_time
+
+                # Periodically check for block changes
+                now = datetime.now()
+                if now - last_check > CHECK_INTERVAL:
+                    block_id, _ = getActiveClassStudentsFaceData(db, local)
+                    attendance = getAttendanceForBlock(db, block_id)
+                    last_check = now
+
+                # Capture and process frame
                 ok, frame = cam.read()
                 if not ok:
                     print("Camera read failed")
-                    raise SystemError("Camera error")
-            except SystemError as e:
-                print(f"Camera error: {e}")
+                    break
+
+                process_frame(frame, face_db, attendance, db, block_id)
+
+                # Check for quit command
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    break
+
+            except Exception as e:
+                print(f"Recognition error: {e}")
                 break
 
-            # Check if the frame is real
-            label = test(
-                image=frame,
-                model_dir="Silent_Face_Anti_Spoofing/resources/anti_spoof_models",
-                device_id=0
-                )
-
-            if label == 1:
-                print("Real frame")
-                # Process faces
-                recognize_faces(frame, face_db, attendance, db, block_id)
-            else:
-                print("Fake frame")
-
-        except Exception as e:
-            print(f"Recognition error: {e}")
-            break
-
-        # Check quit
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
-
-    # Cleanup
-    cam.release()
+        cam.release()
 
 
 if __name__ == "__main__":
