@@ -43,7 +43,14 @@ def recognize_faces(img, face_db, attendance, db, block_id):
 
         # Find faces
         locs = face_recognition.face_locations(small)
+        if not locs:
+            print("No faces detected in frame")
+            return False
+
         encs = face_recognition.face_encodings(small, locs)
+        if not encs:
+            print("No face encodings could be generated")
+            return False
 
         # Check each face
         for enc in encs:
@@ -65,19 +72,17 @@ def recognize_faces(img, face_db, attendance, db, block_id):
                         match = email
 
             # Handle match results
-            if min_dist < 0.65:
+            if min_dist < 0.55:  # More strict threshold
                 name = f"{face_db[match]['first_name']} {face_db[match]['last_name']}"
                 print(f"Found: {name} (dist: {min_dist:.3f})")
 
                 if match not in attendance:
-                    postStudentAttendanceDB(db, match, block_id)
-                    attendance.add(match)
-                    return True
+                    return True  # Return True to indicate potential match
                 else:
                     print(f"{name} already present (dist: {min_dist:.3f})")
                     return None
             else:
-                print("Face found but not recognized")
+                print(f"Face found but not recognized (min_dist: {min_dist:.3f})")
                 return False
 
     except Exception as e:
