@@ -46,7 +46,7 @@ def recognize_faces(img, face_db, attendance, db, block_id):
         if not locs:
             print("No faces detected in frame")
             return False, None
-            
+
         encs = face_recognition.face_encodings(small, locs)
         if not encs:
             print("No face encodings could be generated")

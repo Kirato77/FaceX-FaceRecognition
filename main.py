@@ -72,7 +72,9 @@ def process_frame(frame, face_db, attendance, db, block_id):
     if label == 1:
         print("Real frame")
         # Try to recognize faces and return both result and recognized email
-        result, recognized_email = recognize_faces(frame, face_db, attendance, db, block_id)
+        result, recognized_email = recognize_faces(
+            frame, face_db, attendance, db, block_id
+        )
         return result, recognized_email
     else:
         print("Fake frame")
@@ -146,19 +148,23 @@ def main():
                     break
 
                 # Process frame and update voting
-                result, recognized_email = process_frame(frame, face_db, attendance, db, block_id)
-                
+                result, recognized_email = process_frame(
+                    frame, face_db, attendance, db, block_id
+                )
+
                 if result is True and recognized_email:  # New face recognized
                     if recognized_email not in face_recognition_votes:
                         face_recognition_votes[recognized_email] = 1
                     else:
                         face_recognition_votes[recognized_email] += 1
-                        
+
                         # Check if we have enough votes
                         if face_recognition_votes[recognized_email] >= VOTING_THRESHOLD:
                             postStudentAttendanceDB(db, recognized_email, block_id)
                             attendance.add(recognized_email)
-                            print(f"Attendance recorded for {recognized_email} after {VOTING_THRESHOLD} confirmations")
+                            print(
+                                f"Attendance recorded for {recognized_email} after {VOTING_THRESHOLD} confirmations"
+                            )
                             face_recognition_votes.pop(recognized_email)
                 elif result is False:  # No face or fake frame
                     # Reset face recognition votes
