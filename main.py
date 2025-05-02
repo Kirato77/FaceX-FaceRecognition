@@ -9,6 +9,7 @@ from database.attendance import (
 )
 from utilitaire.face_recognition_utils import recognize_faces
 from database.face_data import update_face_data
+from Silent_Face_Anti_Spoofing.test import test
 
 
 def get_student_name(db, email):
@@ -90,10 +91,22 @@ def main():
     # Init timing
     last_check = datetime.now()
     CHECK_INTERVAL = timedelta(minutes=5)
+    FRAME_INTERVAL = 0.5  # 0.5 seconds between frames (2 frames per second)
+    last_frame_time = time.time()
 
     # Main loop
     while True:
         try:
+            current_time = time.time()
+            
+            # Only process frame every FRAME_INTERVAL seconds
+            if current_time - last_frame_time < FRAME_INTERVAL:
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    break
+                continue
+                
+            last_frame_time = current_time
+
             # Check block changes
             now = datetime.now()
             if now - last_check > CHECK_INTERVAL:
@@ -111,8 +124,19 @@ def main():
                 print(f"Camera error: {e}")
                 break
 
-            # Process faces
-            recognize_faces(frame, face_db, attendance, db, block_id)
+            # Check if the frame is real
+            label = test(
+                image=frame,
+                model_dir="Silent_Face_Anti_Spoofing/resources/anti_spoof_models",
+                device_id=0
+                )
+
+            if label == 1:
+                print("Real frame")
+                # Process faces
+                recognize_faces(frame, face_db, attendance, db, block_id)
+            else:
+                print("Fake frame")
 
         except Exception as e:
             print(f"Recognition error: {e}")
