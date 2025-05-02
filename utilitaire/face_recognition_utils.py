@@ -32,9 +32,9 @@ def recognize_faces(img, face_db, attendance, db, block_id):
         block_id: Current class block ID
 
     Returns:
-        - False if no faces found
-        - True if new attendance recorded
-        - None if face already marked present
+        Tuple of (result, recognized_email):
+        - result: False if no faces found, True if new face found, None if face already marked
+        - recognized_email: The email of the recognized face, or None if no match
     """
     try:
         # Convert and resize image
@@ -45,12 +45,12 @@ def recognize_faces(img, face_db, attendance, db, block_id):
         locs = face_recognition.face_locations(small)
         if not locs:
             print("No faces detected in frame")
-            return False
-
+            return False, None
+            
         encs = face_recognition.face_encodings(small, locs)
         if not encs:
             print("No face encodings could be generated")
-            return False
+            return False, None
 
         # Check each face
         for enc in encs:
@@ -72,22 +72,22 @@ def recognize_faces(img, face_db, attendance, db, block_id):
                         match = email
 
             # Handle match results
-            if min_dist < 0.55:  # More strict threshold
+            if min_dist < 0.60:  # More strict threshold
                 name = f"{face_db[match]['first_name']} {face_db[match]['last_name']}"
                 print(f"Found: {name} (dist: {min_dist:.3f})")
 
                 if match not in attendance:
-                    return True  # Return True to indicate potential match
+                    return True, match  # Return True and the matched email
                 else:
                     print(f"{name} already present (dist: {min_dist:.3f})")
-                    return None
+                    return None, match
             else:
                 print(f"Face found but not recognized (min_dist: {min_dist:.3f})")
-                return False
+                return False, None
 
     except Exception as e:
         print(f"Recognition error: {e}")
-        return False
+        return False, None
 
 
 def studentsImgToFaceData(db, email):

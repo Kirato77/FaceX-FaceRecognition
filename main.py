@@ -1,5 +1,7 @@
 import cv2
 import time
+import numpy as np
+import face_recognition
 from datetime import datetime, timedelta
 from config.env_loader import load_env_variables
 from database.supabase_client import create_supabase_client
@@ -69,12 +71,12 @@ def process_frame(frame, face_db, attendance, db, block_id):
 
     if label == 1:
         print("Real frame")
-        # Try to recognize faces
-        result = recognize_faces(frame, face_db, attendance, db, block_id)
-        return result
+        # Try to recognize faces and return both result and recognized email
+        result, recognized_email = recognize_faces(frame, face_db, attendance, db, block_id)
+        return result, recognized_email
     else:
         print("Fake frame")
-        return False
+        return False, None
 
 
 def main():
@@ -125,7 +127,6 @@ def main():
                 current_time = time.time()
                 if current_time - last_frame_time < FRAME_INTERVAL:
                     if cv2.waitKey(1) & 0xFF == ord("q"):
-                        cam.release()
                         return
                     continue
 
@@ -145,27 +146,20 @@ def main():
                     break
 
                 # Process frame and update voting
-                result = process_frame(frame, face_db, attendance, db, block_id)
-
-                if result is True:  # New face recognized
-                    # Get the last recognized face (assuming it's the one we want to vote on)
-                    for email in face_db:
-                        if (
-                            email not in attendance
-                            and email not in face_recognition_votes
-                        ):
-                            face_recognition_votes[email] = 1
-                        elif email not in attendance:
-                            face_recognition_votes[email] += 1
-
-                            # Check if we have enough votes
-                            if face_recognition_votes[email] >= VOTING_THRESHOLD:
-                                postStudentAttendanceDB(db, email, block_id)
-                                attendance.add(email)
-                                print(
-                                    f"Attendance recorded for {email} after {VOTING_THRESHOLD} confirmations"
-                                )
-                                face_recognition_votes.pop(email)
+                result, recognized_email = process_frame(frame, face_db, attendance, db, block_id)
+                
+                if result is True and recognized_email:  # New face recognized
+                    if recognized_email not in face_recognition_votes:
+                        face_recognition_votes[recognized_email] = 1
+                    else:
+                        face_recognition_votes[recognized_email] += 1
+                        
+                        # Check if we have enough votes
+                        if face_recognition_votes[recognized_email] >= VOTING_THRESHOLD:
+                            postStudentAttendanceDB(db, recognized_email, block_id)
+                            attendance.add(recognized_email)
+                            print(f"Attendance recorded for {recognized_email} after {VOTING_THRESHOLD} confirmations")
+                            face_recognition_votes.pop(recognized_email)
                 elif result is False:  # No face or fake frame
                     # Reset face recognition votes
                     face_recognition_votes.clear()
