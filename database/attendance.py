@@ -36,6 +36,9 @@ def postStudentAttendanceDB(
     if not timestamp:
         timestamp = datetime.now().isoformat()
     try:
+        print(
+            f"Attempting to record attendance for {student_email} in block {block_id}"
+        )
         response = supabase.rpc(
             "post_new_attendance",
             {
@@ -48,9 +51,12 @@ def postStudentAttendanceDB(
 
         if response.data:
             print(f"Présence enregistrée pour {student_email} (Block ID : {block_id}).")
+            return True
         else:
             print(f"{student_email} était déjà enregistré pour ce bloc.")
-    except Exception:
+            return False
+    except Exception as e:
         print(
-            f"Erreur supabase : soucis dans la requete vers supabase 'post_new_attendance' pour cet étudiant {student_email}"
+            f"Erreur supabase : soucis dans la requete vers supabase 'post_new_attendance' pour cet étudiant {student_email}: {str(e)}"
         )
+        return False
