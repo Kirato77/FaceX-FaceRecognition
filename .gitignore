@@ -7,6 +7,8 @@ venv/
 .env
 .env.*
 
+*.pem
+
 # IDE settings
 .idea/
 .vscode/
