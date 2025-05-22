@@ -252,7 +252,12 @@ class WebSocketServer:
                 )
 
                 if result is True and recognized_email:  # New face recognized
-                    print(f"Face recognized: {recognized_email}")
+                    student_data = session["face_db"][recognized_email]
+                    student_name = (
+                        f"{student_data['first_name']} {student_data['last_name']}"
+                    )
+                    print(f"Face recognized: {student_name}")
+
                     # Record attendance immediately
                     if postStudentAttendanceDB(
                         self.db, recognized_email, session["block_id"]
@@ -262,9 +267,11 @@ class WebSocketServer:
                             json.dumps(
                                 {
                                     "status": "success",
-                                    "message": f"Attendance recorded for {recognized_email}",
+                                    "message": f"Attendance recorded for {student_name}",
                                     "data": {
-                                        "attendance_count": len(session["attendance"])
+                                        "email": recognized_email,
+                                        "name": student_name,
+                                        "attendance_count": len(session["attendance"]),
                                     },
                                 }
                             )
@@ -274,19 +281,29 @@ class WebSocketServer:
                             json.dumps(
                                 {
                                     "status": "error",
-                                    "message": f"Failed to record attendance for {recognized_email}",
+                                    "message": f"Failed to record attendance for {student_name}",
+                                    "data": {
+                                        "email": recognized_email,
+                                        "name": student_name,
+                                    },
                                 }
                             )
                         )
                 elif result is None and recognized_email:  # Face already present
-                    print(f"Face already present: {recognized_email}")
+                    student_data = session["face_db"][recognized_email]
+                    student_name = (
+                        f"{student_data['first_name']} {student_data['last_name']}"
+                    )
+                    print(f"Face already present: {student_name}")
                     await websocket.send(
                         json.dumps(
                             {
                                 "status": "info",
-                                "message": f"Face already present: {recognized_email}",
+                                "message": f"Face already present: {student_name}",
                                 "data": {
-                                    "attendance_count": len(session["attendance"])
+                                    "email": recognized_email,
+                                    "name": student_name,
+                                    "attendance_count": len(session["attendance"]),
                                 },
                             }
                         )
