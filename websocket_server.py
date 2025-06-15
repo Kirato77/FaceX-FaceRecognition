@@ -1,17 +1,14 @@
 import asyncio
 import websockets
 import json
-import base64
 import jwt
 import cv2
 import numpy as np
-import face_recognition
 from datetime import datetime
 from config.env_loader import load_env_variables
 from database.supabase_client import create_supabase_client
 from database.attendance import getAttendanceForBlock, postStudentAttendanceDB
 from utilitaire.face_recognition_utils import recognize_faces
-from database.face_data import update_face_data
 from Silent_Face_Anti_Spoofing.test import test
 
 
