@@ -66,6 +66,9 @@ def recognize_faces(img, face_db, attendance, db, block_id):
 
                 # Find best match
                 for emb in embs:
+                    if emb is None:  # Skip None values to prevent errors
+                        print(f"Skipping None embedding for {email}")
+                        continue
                     dist = np.linalg.norm(enc - normalize(np.array(emb)))
                     if dist < min_dist:
                         min_dist = dist
